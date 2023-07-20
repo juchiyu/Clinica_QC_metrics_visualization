@@ -1,0 +1,20 @@
+---
+title: "Clinica QC metrics visualization"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyverse))
+```
+
+## Read data
+```{r}
+data.path <- "../data/"
+
+```
+
