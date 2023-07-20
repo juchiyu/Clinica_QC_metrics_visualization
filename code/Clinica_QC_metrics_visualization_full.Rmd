@@ -1,0 +1,169 @@
+---
+title: "Clinica full QC metrics visualization"
+author: "Ju-Chi.Yu"
+date: "2023-07-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE, echo = FALSE, message='hide', warning='hide'}
+suppressMessages(library(ggplot2))
+suppressMessages(library(tidyverse))
+suppressMessages(library(readr))
+suppressMessages(library(ExPosition))
+suppressMessages(library(PTCA4CATA))
+suppressMessages(library(data4PCCAR))
+suppressMessages(library(dendextend))
+```
+
+## Read data
+```{r, include = FALSE}
+data.path <- "../data/"
+oasis_dice <- read_tsv(paste0(data.path, "oasis_metrics.tsv"))
+oasis_dice_num <- oasis_dice[,c(4,5,7:12)]
+
+```
+
+```{r}
+head(oasis_dice)
+```
+
+## Scatter plot {.tabset}
+
+### dice BET
+
+The correlation between the two metrics is `r cor(oasis_dice$dice_bet_probability, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = dice_bet_probability, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+### dice HD-BET
+
+The correlation between the two metrics is `r cor(oasis_dice$dice_hd_bet_probability, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = dice_hd_bet_probability, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+### Mutual information
+
+The correlation between the two metrics is `r cor(oasis_dice$mutual_info, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = mutual_info, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+### Correlation ratio
+
+The correlation between the two metrics is `r cor(oasis_dice$correlation_ratio, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = correlation_ratio, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+### Norm mi
+
+The correlation between the two metrics is `r cor(oasis_dice$norm_mi, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = norm_mi, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+### Correlation coefficient
+
+The correlation between the two metrics is `r cor(oasis_dice$correlation_coef, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = correlation_coef, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+### L1-norm correlation coefficient
+
+The correlation between the two metrics is `r cor(oasis_dice$cr_l1, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = cr_l1, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+## Correlation plot
+```{r}
+corrplot::corrplot(cor(oasis_dice_num), method = "shade", order = "hclust", hclust.method = "ward.D2")
+```
+
+
+## Explore
+What if we only look at dice?
+
+### Clustering results
+```{r, echo = FALSE}
+# install.packages("dendextend")
+
+# color.ind <- c("TRUE_TRUE" = "#228B22", 
+#                "TRUE_FALSE" = "#20B2AA", 
+#                "FALSE_TRUE" = "#6959CD", 
+#                "FALSE_FALSE" = "#B22222")
+color.ind <- c("TRUE" = "#228B22",
+               "FALSE" = "#B22222")
+color.ind.all <- recode(as.character(oasis_dice$darq_pass), !!!color.ind)
+```
+
+### Density plot
+```{r}
+oasis_dice_num %>% pivot_longer(colnames(oasis_dice_num)) %>%
+ggplot(aes(x = value)) + geom_histogram(bins = 25) + facet_wrap(~name)
+```
+
+
+### PCA
+```{r, echo = FALSE}
+## run PCA
+PCAres <- epPCA(oasis_dice_num, 
+                # DESIGN = oasis_dice$darq_pass,
+                center = FALSE,
+                scale = FALSE,
+                graphs = FALSE)
+
+map.label <- createxyLabels.gen(lambda = PCAres$ExPosition.Data$eigs,
+                                tau = PCAres$ExPosition.Data$t)
+```
+
+```{r}
+## Plot factor scores
+fi.map <- createFactorMap(PCAres$ExPosition.Data$fi,
+                          col.points = color.ind.all,
+                          alpha.points = 0.3,
+                          col.background = NULL,
+                          col.axes = "black")
+
+fi.map$zeMap_background + fi.map$zeMap_dots + map.label
+
+## Column factor scores
+fj.map <- createFactorMap(PCAres$ExPosition.Data$fj,
+                          col.background = NULL,
+                          col.axes = "black")
+
+fj.arrow <- addArrows(PCAres$ExPosition.Data$fj)
+
+fj.map$zeMap + fj.arrow + map.label
+```
+
+If we narrow it down to a subset, we would choose `dice_hd_bet_probability`, `cr_l1`, `correlation_ratio`, and `norm_mi`
+
+
