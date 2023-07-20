@@ -2,7 +2,7 @@
 title: "Clinica full QC metrics visualization"
 author: "Ju-Chi.Yu"
 date: "2023-07-20"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
