@@ -1,20 +1,123 @@
 ---
 title: "Clinica QC metrics visualization"
-output: github_document
+author: "Ju-Chi.Yu"
+date: "2023-07-20"
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r, include = FALSE, echo = FALSE, message='hide', warning='hide'}
 suppressMessages(library(ggplot2))
 suppressMessages(library(tidyverse))
+suppressMessages(library(readr))
+suppressMessages(library(ExPosition))
+suppressMessages(library(PTCA4CATA))
+suppressMessages(library(data4PCCAR))
+suppressMessages(library(dendextend))
 ```
 
 ## Read data
-```{r}
+```{r, include = FALSE}
 data.path <- "../data/"
-
+oasis_dice <- read_tsv(paste0(data.path, "oasis_dice.tsv"))
 ```
+
+```{r}
+head(oasis_dice)
+```
+
+## Visualize {.tabset}
+
+### scatter plot - all
+
+The correlation between the two metrics is `r cor(oasis_dice$dice_probability, oasis_dice$darq_probability)`
+
+```{r, echo = FALSE}
+ggplot(oasis_dice, 
+       aes(x = dice_probability, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+### scatter plot - failed
+
+```{r, echo=FALSE}
+oasis_dice %>% filter(darq_pass == "FALSE") %>% ggplot(aes(x = dice_probability, y = darq_probability, color = darq_pass)) +
+  geom_point()
+```
+
+## Explore
+What if we only look at dice?
+
+### histrogram on dice probability
+Here is a histogram of dice probability, colored according to Pass/Fail based on DARQ.
+
+```{r, echo = FALSE}
+oasis_dice %>% ggplot(aes(dice_probability, fill = darq_pass)) +
+geom_histogram(bins = 30)
+```
+
+### Regroup
+Group the participants based on: <darq_pass>_<dice_pass>
+```{r, echo = FALSE}
+oasis_dice$dice_pass <- (oasis_dice$dice_probability > 0.91)
+
+oasis_dice$both_pass <- sprintf("%s_%s", as.character(oasis_dice$darq_pass), as.character(oasis_dice$dice_pass))
+```
+
+### Clustering results
+```{r, echo = FALSE}
+oasis_dice_num <- oasis_dice[,c(4,5)]
+oasis.cluster <- hclust(dist(scale(oasis_dice_num)), method = "ward.D2")
+dend <- as.dendrogram(oasis.cluster)
+
+# install.packages("dendextend")
+
+color.ind <- c("TRUE_TRUE" = "#228B22", 
+               "TRUE_FALSE" = "#20B2AA", 
+               "FALSE_TRUE" = "#6959CD", 
+               "FALSE_FALSE" = "#B22222")
+color.ind.all <- recode(as.character(oasis_dice$both_pass), !!!color.ind)
+labels_colors(dend) <- color.ind.all
+
+plot(dend)
+colored_bars(color.ind.all[oasis.cluster$order], dend, rowLabels = "Groups")
+legend(x = 50, y = 15, names(color.ind), fill = color.ind, col = color.ind, cex = 1, title = "darq_dice")
+```
+
+
+### PCA
+```{r, echo = FALSE}
+## run PCA
+PCAres <- epPCA(oasis_dice_num, 
+                DESIGN = oasis_dice$darq_pass,
+                scale = "SS1",
+                graphs = FALSE)
+
+map.label <- createxyLabels.gen(lambda = PCAres$ExPosition.Data$eigs,
+                                tau = PCAres$ExPosition.Data$t)
+
+## Plot factor scores
+fi.map <- createFactorMap(PCAres$ExPosition.Data$fi,
+                          col.points = color.ind.all,
+                          alpha.points = 0.3,
+                          col.background = NULL,
+                          col.axes = "black")
+
+fi.map$zeMap_background + fi.map$zeMap_dots + map.label
+
+## Column factor scores
+fj.map <- createFactorMap(PCAres$ExPosition.Data$fj,
+                          col.background = NULL,
+                          col.axes = "black")
+
+fj.arrow <- addArrows(PCAres$ExPosition.Data$fj)
+
+fj.map$zeMap + fj.arrow + map.label
+```
+
+
+
 
