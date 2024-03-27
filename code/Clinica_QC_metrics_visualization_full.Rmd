@@ -2,7 +2,7 @@
 title: "Clinica full QC metrics visualization"
 author: "Ju-Chi.Yu"
 date: "2023-07-20"
-output: github_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -20,9 +20,10 @@ suppressMessages(library(dendextend))
 ```
 
 ## Read data
+
 ```{r, include = FALSE}
 data.path <- "../data/"
-oasis_dice <- read_tsv(paste0(data.path, "oasis_metrics.tsv"))
+oasis_dice <- read_tsv(paste0(data.path, "oasis_metrics.tsv")) %>% as.data.frame
 oasis_dice_num <- oasis_dice[,c(4,5,7:12)]
 
 ```
@@ -32,6 +33,8 @@ head(oasis_dice)
 ```
 
 ## Scatter plot {.tabset}
+
+The scatter plots illustrate the relationship between each metric and DARQ probability.
 
 ### dice BET
 
@@ -52,6 +55,7 @@ ggplot(oasis_dice,
        aes(x = dice_hd_bet_probability, y = darq_probability, color = darq_pass)) +
   geom_point()
 ```
+
 ### Mutual information
 
 The correlation between the two metrics is `r cor(oasis_dice$mutual_info, oasis_dice$darq_probability)`
@@ -103,38 +107,39 @@ ggplot(oasis_dice,
 ```
 
 ## Correlation plot
+
+This figure shows how these methods are correlated to one another. In general, everything is positively correlated meaning that they are capturing similar information. The darker squares, however, illustrates the metrics that cluster together based on their similarity.
+
 ```{r}
 corrplot::corrplot(cor(oasis_dice_num), method = "shade", order = "hclust", hclust.method = "ward.D2")
 ```
 
-
 ## Explore
-What if we only look at dice?
 
-### Clustering results
+To explore the relationship and compare between the metrics, we first look at their distributions, then perform a principal component analysis (PCA) on all metrics.
+
 ```{r, echo = FALSE}
-# install.packages("dendextend")
-
-# color.ind <- c("TRUE_TRUE" = "#228B22", 
-#                "TRUE_FALSE" = "#20B2AA", 
-#                "FALSE_TRUE" = "#6959CD", 
-#                "FALSE_FALSE" = "#B22222")
 color.ind <- c("TRUE" = "#228B22",
                "FALSE" = "#B22222")
 color.ind.all <- recode(as.character(oasis_dice$darq_pass), !!!color.ind)
 ```
 
 ### Density plot
+
+The distribution showed that DARQ has very different distribution as compared to other metrics as it tends to give extreme scores. 
+
 ```{r}
 oasis_dice_num %>% pivot_longer(colnames(oasis_dice_num)) %>%
-ggplot(aes(x = value)) + geom_histogram(bins = 25) + facet_wrap(~name)
+  ggplot(aes(x = value)) + geom_histogram(bins = 25) + facet_wrap(~name)
 ```
 
-
 ### PCA
+
+We performed a PCA on all metrics aside from DARQ to examine the relationships between them. Because these metrics are all between 0 and 1, we performed to run a non-centered-non-scaled PCA to keep the variance and the values of the metrics. This PCA is equivalent to performing a singular value decomposition directly on the data.
+
 ```{r, echo = FALSE}
 ## run PCA
-PCAres <- epPCA(oasis_dice_num, 
+PCAres <- epPCA(oasis_dice_num[,-2], 
                 # DESIGN = oasis_dice$darq_pass,
                 center = FALSE,
                 scale = FALSE,
@@ -144,7 +149,7 @@ map.label <- createxyLabels.gen(lambda = PCAres$ExPosition.Data$eigs,
                                 tau = PCAres$ExPosition.Data$t)
 ```
 
-```{r}
+```{r, echo = FALSE}
 ## Plot factor scores
 fi.map <- createFactorMap(PCAres$ExPosition.Data$fi,
                           col.points = color.ind.all,
@@ -153,7 +158,11 @@ fi.map <- createFactorMap(PCAres$ExPosition.Data$fi,
                           col.axes = "black")
 
 fi.map$zeMap_background + fi.map$zeMap_dots + map.label
+```
 
+The row factor scores (participants) showed a separation roughly matching the pass/fail outcomes from DARQ. In the figure, GREEN dots indicate passing participants, and RED dots indicate failing ones.
+
+```{r, echo = FALSE}
 ## Column factor scores
 fj.map <- createFactorMap(PCAres$ExPosition.Data$fj,
                           col.background = NULL,
@@ -161,9 +170,87 @@ fj.map <- createFactorMap(PCAres$ExPosition.Data$fj,
 
 fj.arrow <- addArrows(PCAres$ExPosition.Data$fj)
 
-fj.map$zeMap + fj.arrow + map.label
+fj.map$zeMap + fj.arrow + map.label + coord_cartesian()
 ```
 
-If we narrow it down to a subset, we would choose `dice_hd_bet_probability`, `cr_l1`, `correlation_ratio`, and `norm_mi`
+From the column factor scores (metrics), we identified three clusters of metrics. To narrow it down to few metrics, we chose `dice_hd_bet_probability` which we think is the most meaningful to include, and `correlation_coef` which is less related to the other metrics (as indicated by large angle between all metrics and itself).
 
+### Grouping with the two metrics
 
+From `dice_hd_bet_probability` and `correlation_coef`, we examined their relationships and try to derive different QC groups.
+
+#### Distributions
+
+We first checked the distribution of the two metrics and used these distribution to identify a cut-off point. For DICE_HD_BET, we set it to 0.89, and for correlation coefficient, we set it to 0.5 (indicated by the red lines).
+
+```{r}
+FinMetric <- oasis_dice %>% select(dice_hd_bet_probability, correlation_coef) %>% as.data.frame
+rownames(FinMetric) <- oasis_dice$participant_id
+
+FinMetric %>% ggplot(aes(dice_hd_bet_probability)) + geom_histogram(bins = 30) + geom_vline(xintercept = 0.89, color = "red", lwd = 2)
+FinMetric %>% ggplot(aes(correlation_coef)) + geom_histogram(bins = 25) + geom_vline(xintercept = 0.5, color = "red", lwd = 2)
+
+```
+
+#### scatter plot
+
+We plotted the scatter plot between the two current metrics with their newly-derived pass/fail outcomes.
+
+The correlation between the two metrics is `r cor(FinMetric$correlation_coef, FinMetric$dice_hd_bet_probability)`
+
+-   The group labels are in (`Pass/Fail_corr_coef`)\_(`Pass/Fail_dice_hd_bet`)
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+## Pass/Fail based on two metrices
+FinMetric$corr_ratio_group <- FinMetric$correlation_coef > 0.5
+FinMetric$dice_hdbet_group <- FinMetric$dice_hd_bet_probability > 0.89
+
+## Combine the two metrics
+FinMetric$both_group <- sprintf("%s_%s", FinMetric$corr_ratio_group, FinMetric$dice_hdbet_group)
+
+col.both.group <- c("TRUE_TRUE" = "#228B22",
+                    "TRUE_FALSE" = "#20B2AA",
+                    "FALSE_TRUE" = "#6959CD",
+                    "FALSE_FALSE" = "#B22222")
+FinMetric$both_group_col <- recode(FinMetric$both_group, !!!col.both.group)
+
+library(plotly)
+plot_ly(data = FinMetric, 
+        x = ~correlation_coef, 
+        y = ~dice_hd_bet_probability, 
+        color = ~both_group, 
+        colors = col.both.group,
+        text = ~rownames(FinMetric))
+
+# ggplot(FinMetric, 
+#        aes(x = correlation_coef, y = dice_hd_bet_probability, color = both_group)) +
+#   geom_point() +
+#   scale_color_manual(values = col.both.group)
+
+```
+
+#### Participants in 4 groups {.tabset}
+
+##### Pass Both
+
+```{r}
+FinMetric %>% filter(both_group == "TRUE_TRUE") %>% rownames
+```
+
+##### Fail Both
+
+```{r}
+FinMetric %>% filter(both_group == "FALSE_FALSE") %>% rownames
+```
+
+##### Pass Corr_coef Fail dice_hd_bet
+
+```{r}
+FinMetric %>% filter(both_group == "TRUE_FALSE") %>% rownames
+```
+
+##### Fail Corr_coef Pass dice_hd_bet
+
+```{r}
+FinMetric %>% filter(both_group == "FALSE_TRUE") %>% rownames
+```
